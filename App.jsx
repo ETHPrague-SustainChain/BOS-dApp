@@ -192,6 +192,54 @@ State.init({
   packageInfo: null,
 });
 
+function getBranchById(branches, id) {
+  const branch = branches.find((branch) => branch.id === id);
+
+  if (branch) {
+    return branch.snapshots;
+  }
+
+  return null;
+}
+
+function getGql(id) {
+  console.log("getGql id", id);
+  const response = fetch(
+    "https://api.thegraph.com/subgraphs/name/holidayman/ssc-testnet",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: `{
+          branches(where: {head_: {handler: "0xd36aadb538870b8299246e3787cf1a1deb32e1da"}}) {
+          id
+            head {
+              id
+            }
+            snapshots {
+              id
+              name
+              description
+              created
+              handler
+              status
+              parent {
+                id
+              }
+            }
+          }
+        }`,
+      }),
+    }
+  );
+  if (!response) {
+    return null;
+  }
+  return getBranchById(response.body.data.branches, id);
+}
+
 const requestHandler = (request, response, Utils) => {
   switch (request.type) {
     case "is-logged":
@@ -215,7 +263,22 @@ const requestHandler = (request, response, Utils) => {
     case "create-package":
       createPackageHandler(request, response, Utils);
       break;
+    case "create-report":
+      createReportHandler(request, response, Utils);
+      break;
+    case "accept-package":
+      acceptPackageHandler(request, response, Utils);
+      break;
+    case "get-gql-branch":
+      getGqlBranchHandler(request, response, Utils);
+      break;
   }
+};
+
+const getGqlBranchHandler = (request, response, Utils) => {
+  console.log("[BOS] get-gql");
+  const gqlBranch = getGql(request.payload);
+  response(request).send(gqlBranch);
 };
 
 const isLoggedHandler = (request, response, Utils) => {
@@ -305,6 +368,48 @@ const createPackageHandler = (request, response, Utils) => {
     .catch((err) => {
       console.log("[BOS] create-package error", err);
       response(request).send({ ok: false });
+    });
+};
+
+const createReportHandler = (request, response, Utils) => {
+  console.log("[BOS] create-report");
+  const suschain = new ethers.Contract(
+    contract,
+    abiObj,
+    Ethers.provider().getSigner()
+  );
+
+  const { parent, reportDescription } = request.payload;
+
+  suschain
+    .addPackageSnapshot(parent, 3, "Reported", reportDescription)
+    .then((result) => {
+      response(request).send(true);
+    })
+    .catch((err) => {
+      console.log("[BOS] create-report error", err);
+      response(request).send(false);
+    });
+};
+
+const acceptPackageHandler = (request, response, Utils) => {
+  console.log("[BOS] accept-package");
+  const suschain = new ethers.Contract(
+    contract,
+    abiObj,
+    Ethers.provider().getSigner()
+  );
+
+  const parent = request.payload;
+
+  suschain
+    .addPackageSnapshot(parent, 4, "", "")
+    .then((result) => {
+      response(request).send(true);
+    })
+    .catch((err) => {
+      console.log("[BOS] accept-package error", err);
+      response(request).send(false);
     });
 };
 
